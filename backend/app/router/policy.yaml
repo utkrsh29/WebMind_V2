@@ -1,0 +1,29 @@
+# Deterministic Routing Policy Rules & Thresholds
+# WebMind uses these thresholds to map a Task Profile to an Agent Tier.
+
+thresholds:
+  reasoning:
+    min_constraints: 3
+    require_comparison: true
+    require_multi_site: true
+    require_decision: true
+    task_types:
+      - comparison
+      - multi_site
+    reasoning_requirement: high
+
+  general:
+    min_constraints: 1
+    require_filtering: true
+    require_form_fill: true
+    require_extraction: true
+    task_types:
+      - form_fill
+      - filtering
+      - extraction
+      - navigation
+    expected_steps:
+      - medium
+
+  fast:
+    fallback_tier: FAST

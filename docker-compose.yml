@@ -1,0 +1,61 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: webmind-db
+    environment:
+      POSTGRES_USER: webmind
+      POSTGRES_PASSWORD: webmind
+      POSTGRES_DB: webmind
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U webmind -d webmind"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: webmind-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://webmind:webmind@db:5432/webmind
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - FAST_MODEL=${FAST_MODEL:-gemini/gemini-2.5-flash}
+      - GENERAL_MODEL=${GENERAL_MODEL:-gemini/gemini-2.5-flash}
+      - REASONING_MODEL=${REASONING_MODEL:-gemini/gemini-2.5-pro}
+      - VLM_MODEL=${VLM_MODEL:-gemini/gemini-2.5-flash}
+      - MAX_STEPS_PER_RUN=${MAX_STEPS_PER_RUN:-40}
+      - MAX_RETRIES_PER_STEP=${MAX_RETRIES_PER_STEP:-2}
+      - HEADLESS=${HEADLESS:-true}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - backend-cache:/root/.cache
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: webmind-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  backend-cache:

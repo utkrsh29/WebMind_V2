@@ -1,0 +1,122 @@
+[
+  {
+    "id": "task_01",
+    "category": "simple_search",
+    "query": "Search for Python 3.12 documentation on DuckDuckGo and find the what's new summary",
+    "expected_tier": "FAST"
+  },
+  {
+    "id": "task_02",
+    "category": "simple_search",
+    "query": "Look up the official Next.js App Router documentation homepage",
+    "expected_tier": "FAST"
+  },
+  {
+    "id": "task_03",
+    "category": "simple_search",
+    "query": "Search Wikipedia for the history of Playwright browser automation",
+    "expected_tier": "FAST"
+  },
+  {
+    "id": "task_04",
+    "category": "simple_search",
+    "query": "Find GitHub repository for LiteLLM and extract the stars count",
+    "expected_tier": "FAST"
+  },
+  {
+    "id": "task_05",
+    "category": "simple_search",
+    "query": "Lookup current release notes of FastAPI framework on GitHub",
+    "expected_tier": "FAST"
+  },
+  {
+    "id": "task_06",
+    "category": "form_fill",
+    "query": "Go to demo form on the-internet.herokuapp.com/login and fill username tomsmith and password SuperSecretPassword!",
+    "expected_tier": "GENERAL"
+  },
+  {
+    "id": "task_07",
+    "category": "form_fill",
+    "query": "Fill out feedback form on demoqa.com/text-box with name Alex, email alex@example.com, and submit",
+    "expected_tier": "GENERAL"
+  },
+  {
+    "id": "task_08",
+    "category": "form_fill",
+    "query": "Search flights Pune to Delhi on makemytrip or google flights with date next Monday",
+    "expected_tier": "GENERAL"
+  },
+  {
+    "id": "task_09",
+    "category": "form_fill",
+    "query": "Navigate to DuckDuckGo search settings and change theme to dark mode",
+    "expected_tier": "GENERAL"
+  },
+  {
+    "id": "task_10",
+    "category": "form_fill",
+    "query": "Fill the contact support form on a demo e-commerce store with email and inquiry",
+    "expected_tier": "GENERAL"
+  },
+  {
+    "id": "task_11",
+    "category": "filtering",
+    "query": "Find laptops under 70k with 16GB RAM and SSD storage",
+    "expected_tier": "REASONING"
+  },
+  {
+    "id": "task_12",
+    "category": "filtering",
+    "query": "Find a hotel in Goa for 2 nights under 5000 per night with swimming pool",
+    "expected_tier": "REASONING"
+  },
+  {
+    "id": "task_13",
+    "category": "filtering",
+    "query": "Search for noise cancelling wireless headphones under 15000 with over 4 star rating",
+    "expected_tier": "GENERAL"
+  },
+  {
+    "id": "task_14",
+    "category": "filtering",
+    "query": "Find mechanical keyboards under 4000 with hot-swappable switches",
+    "expected_tier": "GENERAL"
+  },
+  {
+    "id": "task_15",
+    "category": "filtering",
+    "query": "Search for 4K 27-inch monitors under 25000 with IPS display and HDMI",
+    "expected_tier": "REASONING"
+  },
+  {
+    "id": "task_16",
+    "category": "multi_site_comparison",
+    "query": "Compare iPhone 15 prices across Amazon, Flipkart, and Croma",
+    "expected_tier": "REASONING"
+  },
+  {
+    "id": "task_17",
+    "category": "multi_site_comparison",
+    "query": "Compare Sony WH-1000XM5 price and delivery times between 3 shopping websites",
+    "expected_tier": "REASONING"
+  },
+  {
+    "id": "task_18",
+    "category": "multi_site_comparison",
+    "query": "Compare hotel prices in Mumbai on Booking.com and Agoda for next weekend",
+    "expected_tier": "REASONING"
+  },
+  {
+    "id": "task_19",
+    "category": "multi_site_comparison",
+    "query": "Which laptop is better value: MacBook Air M2 vs Lenovo ThinkPad E14 under 80000?",
+    "expected_tier": "REASONING"
+  },
+  {
+    "id": "task_20",
+    "category": "multi_site_comparison",
+    "query": "Compare roundtrip flights Bangalore to Singapore across airlines on Google Flights and Skyscanner",
+    "expected_tier": "REASONING"
+  }
+]

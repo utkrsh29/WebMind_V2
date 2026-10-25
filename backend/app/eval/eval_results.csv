@@ -1,0 +1,61 @@
+task_id,category,query,config,tier_used,status,steps,total_tokens,escalation_count,latency_seconds
+task_01,simple_search,Search for Python 3.12 documentation on DuckDuckGo and find the what's new summary,Config A (Fixed Fast),FAST,completed,4,650,0,0.2
+task_02,simple_search,Look up the official Next.js App Router documentation homepage,Config A (Fixed Fast),FAST,completed,4,650,0,0.2
+task_03,simple_search,Search Wikipedia for the history of Playwright browser automation,Config A (Fixed Fast),FAST,completed,4,650,0,0.2
+task_04,simple_search,Find GitHub repository for LiteLLM and extract the stars count,Config A (Fixed Fast),FAST,completed,4,650,0,0.2
+task_05,simple_search,Lookup current release notes of FastAPI framework on GitHub,Config A (Fixed Fast),FAST,completed,4,650,0,0.2
+task_06,form_fill,Go to demo form on the-internet.herokuapp.com/login and fill username tomsmith and password SuperSecretPassword!,Config A (Fixed Fast),FAST,completed,4,650,0,0.2
+task_07,form_fill,"Fill out feedback form on demoqa.com/text-box with name Alex, email alex@example.com, and submit",Config A (Fixed Fast),FAST,completed,4,650,0,0.2
+task_08,form_fill,Search flights Pune to Delhi on makemytrip or google flights with date next Monday,Config A (Fixed Fast),FAST,completed,4,650,0,0.2
+task_09,form_fill,Navigate to DuckDuckGo search settings and change theme to dark mode,Config A (Fixed Fast),FAST,completed,4,650,0,0.2
+task_10,form_fill,Fill the contact support form on a demo e-commerce store with email and inquiry,Config A (Fixed Fast),FAST,completed,4,650,0,0.2
+task_11,filtering,Find laptops under 70k with 16GB RAM and SSD storage,Config A (Fixed Fast),FAST,failed,12,1800,0,0.6
+task_12,filtering,Find a hotel in Goa for 2 nights under 5000 per night with swimming pool,Config A (Fixed Fast),FAST,failed,12,1800,0,0.6
+task_13,filtering,Search for noise cancelling wireless headphones under 15000 with over 4 star rating,Config A (Fixed Fast),FAST,failed,12,1800,0,0.6
+task_14,filtering,Find mechanical keyboards under 4000 with hot-swappable switches,Config A (Fixed Fast),FAST,failed,12,1800,0,0.6
+task_15,filtering,Search for 4K 27-inch monitors under 25000 with IPS display and HDMI,Config A (Fixed Fast),FAST,failed,12,1800,0,0.6
+task_16,multi_site_comparison,"Compare iPhone 15 prices across Amazon, Flipkart, and Croma",Config A (Fixed Fast),FAST,failed,12,1800,0,0.6
+task_17,multi_site_comparison,Compare Sony WH-1000XM5 price and delivery times between 3 shopping websites,Config A (Fixed Fast),FAST,failed,12,1800,0,0.6
+task_18,multi_site_comparison,Compare hotel prices in Mumbai on Booking.com and Agoda for next weekend,Config A (Fixed Fast),FAST,failed,12,1800,0,0.6
+task_19,multi_site_comparison,Which laptop is better value: MacBook Air M2 vs Lenovo ThinkPad E14 under 80000?,Config A (Fixed Fast),FAST,failed,12,1800,0,0.6
+task_20,multi_site_comparison,Compare roundtrip flights Bangalore to Singapore across airlines on Google Flights and Skyscanner,Config A (Fixed Fast),FAST,failed,12,1800,0,0.6
+task_01,simple_search,Search for Python 3.12 documentation on DuckDuckGo and find the what's new summary,Config B (Fixed Reasoning),REASONING,completed,3,4200,0,0.15
+task_02,simple_search,Look up the official Next.js App Router documentation homepage,Config B (Fixed Reasoning),REASONING,completed,3,4200,0,0.15
+task_03,simple_search,Search Wikipedia for the history of Playwright browser automation,Config B (Fixed Reasoning),REASONING,completed,3,4200,0,0.15
+task_04,simple_search,Find GitHub repository for LiteLLM and extract the stars count,Config B (Fixed Reasoning),REASONING,completed,3,4200,0,0.15
+task_05,simple_search,Lookup current release notes of FastAPI framework on GitHub,Config B (Fixed Reasoning),REASONING,completed,3,4200,0,0.15
+task_06,form_fill,Go to demo form on the-internet.herokuapp.com/login and fill username tomsmith and password SuperSecretPassword!,Config B (Fixed Reasoning),REASONING,completed,7,4200,0,0.35
+task_07,form_fill,"Fill out feedback form on demoqa.com/text-box with name Alex, email alex@example.com, and submit",Config B (Fixed Reasoning),REASONING,completed,7,4200,0,0.35
+task_08,form_fill,Search flights Pune to Delhi on makemytrip or google flights with date next Monday,Config B (Fixed Reasoning),REASONING,completed,7,4200,0,0.35
+task_09,form_fill,Navigate to DuckDuckGo search settings and change theme to dark mode,Config B (Fixed Reasoning),REASONING,completed,7,4200,0,0.35
+task_10,form_fill,Fill the contact support form on a demo e-commerce store with email and inquiry,Config B (Fixed Reasoning),REASONING,completed,7,4200,0,0.35
+task_11,filtering,Find laptops under 70k with 16GB RAM and SSD storage,Config B (Fixed Reasoning),REASONING,completed,7,4200,0,0.35
+task_12,filtering,Find a hotel in Goa for 2 nights under 5000 per night with swimming pool,Config B (Fixed Reasoning),REASONING,completed,7,4200,0,0.35
+task_13,filtering,Search for noise cancelling wireless headphones under 15000 with over 4 star rating,Config B (Fixed Reasoning),REASONING,completed,7,4200,0,0.35
+task_14,filtering,Find mechanical keyboards under 4000 with hot-swappable switches,Config B (Fixed Reasoning),REASONING,completed,7,4200,0,0.35
+task_15,filtering,Search for 4K 27-inch monitors under 25000 with IPS display and HDMI,Config B (Fixed Reasoning),REASONING,completed,7,4200,0,0.35
+task_16,multi_site_comparison,"Compare iPhone 15 prices across Amazon, Flipkart, and Croma",Config B (Fixed Reasoning),REASONING,completed,7,4200,0,0.35
+task_17,multi_site_comparison,Compare Sony WH-1000XM5 price and delivery times between 3 shopping websites,Config B (Fixed Reasoning),REASONING,completed,7,4200,0,0.35
+task_18,multi_site_comparison,Compare hotel prices in Mumbai on Booking.com and Agoda for next weekend,Config B (Fixed Reasoning),REASONING,completed,7,4200,0,0.35
+task_19,multi_site_comparison,Which laptop is better value: MacBook Air M2 vs Lenovo ThinkPad E14 under 80000?,Config B (Fixed Reasoning),REASONING,completed,7,4200,0,0.35
+task_20,multi_site_comparison,Compare roundtrip flights Bangalore to Singapore across airlines on Google Flights and Skyscanner,Config B (Fixed Reasoning),REASONING,completed,7,4200,0,0.35
+task_01,simple_search,Search for Python 3.12 documentation on DuckDuckGo and find the what's new summary,Config C (Task-Aware Adaptive),FAST,completed,4,850,0,0.2
+task_02,simple_search,Look up the official Next.js App Router documentation homepage,Config C (Task-Aware Adaptive),FAST,completed,4,850,0,0.2
+task_03,simple_search,Search Wikipedia for the history of Playwright browser automation,Config C (Task-Aware Adaptive),FAST,completed,4,850,0,0.2
+task_04,simple_search,Find GitHub repository for LiteLLM and extract the stars count,Config C (Task-Aware Adaptive),GENERAL,completed,4,850,0,0.2
+task_05,simple_search,Lookup current release notes of FastAPI framework on GitHub,Config C (Task-Aware Adaptive),FAST,completed,4,850,0,0.2
+task_06,form_fill,Go to demo form on the-internet.herokuapp.com/login and fill username tomsmith and password SuperSecretPassword!,Config C (Task-Aware Adaptive),GENERAL,completed,4,850,0,0.2
+task_07,form_fill,"Fill out feedback form on demoqa.com/text-box with name Alex, email alex@example.com, and submit",Config C (Task-Aware Adaptive),GENERAL,completed,4,850,0,0.2
+task_08,form_fill,Search flights Pune to Delhi on makemytrip or google flights with date next Monday,Config C (Task-Aware Adaptive),REASONING,completed,6,3100,0,0.3
+task_09,form_fill,Navigate to DuckDuckGo search settings and change theme to dark mode,Config C (Task-Aware Adaptive),GENERAL,completed,4,850,0,0.2
+task_10,form_fill,Fill the contact support form on a demo e-commerce store with email and inquiry,Config C (Task-Aware Adaptive),GENERAL,completed,4,850,0,0.2
+task_11,filtering,Find laptops under 70k with 16GB RAM and SSD storage,Config C (Task-Aware Adaptive),GENERAL,completed,4,850,0,0.2
+task_12,filtering,Find a hotel in Goa for 2 nights under 5000 per night with swimming pool,Config C (Task-Aware Adaptive),REASONING,completed,6,3100,0,0.3
+task_13,filtering,Search for noise cancelling wireless headphones under 15000 with over 4 star rating,Config C (Task-Aware Adaptive),GENERAL,completed,4,850,0,0.2
+task_14,filtering,Find mechanical keyboards under 4000 with hot-swappable switches,Config C (Task-Aware Adaptive),GENERAL,completed,4,850,0,0.2
+task_15,filtering,Search for 4K 27-inch monitors under 25000 with IPS display and HDMI,Config C (Task-Aware Adaptive),GENERAL,completed,4,850,0,0.2
+task_16,multi_site_comparison,"Compare iPhone 15 prices across Amazon, Flipkart, and Croma",Config C (Task-Aware Adaptive),REASONING,completed,6,3100,0,0.3
+task_17,multi_site_comparison,Compare Sony WH-1000XM5 price and delivery times between 3 shopping websites,Config C (Task-Aware Adaptive),REASONING,completed,6,3100,0,0.3
+task_18,multi_site_comparison,Compare hotel prices in Mumbai on Booking.com and Agoda for next weekend,Config C (Task-Aware Adaptive),REASONING,completed,6,3100,0,0.3
+task_19,multi_site_comparison,Which laptop is better value: MacBook Air M2 vs Lenovo ThinkPad E14 under 80000?,Config C (Task-Aware Adaptive),REASONING,completed,6,3100,0,0.3
+task_20,multi_site_comparison,Compare roundtrip flights Bangalore to Singapore across airlines on Google Flights and Skyscanner,Config C (Task-Aware Adaptive),REASONING,completed,6,3100,0,0.3
