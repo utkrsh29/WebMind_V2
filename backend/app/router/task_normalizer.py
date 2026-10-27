@@ -1,11 +1,50 @@
 import logging
 import re
+from datetime import date, timedelta
 from typing import Any, Dict, List
 from app.agent.llm import call_llm
 from app.config import settings
 from app.router.task_profile import NormalizedTaskData
 
 logger = logging.getLogger(__name__)
+
+
+def _repair_implicit_date_years(query: str, normalized: NormalizedTaskData) -> NormalizedTaskData:
+    """Move model-invented years on yearless booking dates to the next occurrence."""
+    if re.search(r"\b(?:19|20|21)\d{2}\b", query):
+        return normalized
+
+    constraints = dict(normalized.constraints)
+    start_key = next((key for key in ("start_date", "check_in", "checkin", "arrival_date") if key in constraints), None)
+    end_key = next((key for key in ("end_date", "check_out", "checkout", "departure_date") if key in constraints), None)
+    if not start_key:
+        return normalized
+
+    try:
+        original_start = date.fromisoformat(str(constraints[start_key]))
+        original_end = date.fromisoformat(str(constraints[end_key])) if end_key else None
+    except (TypeError, ValueError):
+        return normalized
+
+    today = date.today()
+    year = max(today.year, original_start.year)
+    while True:
+        try:
+            candidate = original_start.replace(year=year)
+        except ValueError:  # Handle Feb 29 in a non-leap year.
+            candidate = original_start.replace(year=year, day=28)
+        if candidate >= today:
+            break
+        year += 1
+
+    if candidate == original_start:
+        return normalized
+
+    constraints[start_key] = candidate.isoformat()
+    if end_key and original_end:
+        stay_length = max(0, (original_end - original_start).days)
+        constraints[end_key] = (candidate + timedelta(days=stay_length)).isoformat()
+    return normalized.model_copy(update={"constraints": constraints})
 
 NORMALIZER_SYSTEM_PROMPT = """You are a strict task classification and normalization engine for a web agent.
 Analyze the user's free-form web task query and extract structured fields in valid JSON matching this schema:
@@ -129,7 +168,14 @@ async def normalize_task(query: str) -> NormalizedTaskData:
         return fallback_rule_based_normalizer(query)
 
     messages = [
-        {"role": "system", "content": NORMALIZER_SYSTEM_PROMPT},
+        {
+            "role": "system",
+            "content": (
+                NORMALIZER_SYSTEM_PROMPT
+                + f"\nToday's date is {date.today().isoformat()}. For dates without a stated year, "
+                "resolve them to the next future occurrence; do not invent a past year."
+            ),
+        },
         {"role": "user", "content": f"Task Query: {query}"},
     ]
 
@@ -140,7 +186,8 @@ async def normalize_task(query: str) -> NormalizedTaskData:
                 messages=messages,
                 temperature=0.0,
             )
-            return NormalizedTaskData.model_validate(parsed)
+            normalized = NormalizedTaskData.model_validate(parsed)
+            return _repair_implicit_date_years(query, normalized)
         except Exception as e:
             logger.warning(f"Task normalization attempt {attempt + 1} failed: {e}")
 

@@ -1,10 +1,14 @@
 import asyncio
 import fnmatch
 import logging
+import sys
 from typing import List, Optional
 from urllib.parse import urlparse
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 from app.config import settings
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +55,8 @@ class BrowserSession:
 
         self.context = await self.browser.new_context(
             viewport={"width": 1280, "height": 800},
+            locale="en-US",
+            timezone_id="Asia/Kolkata",
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "

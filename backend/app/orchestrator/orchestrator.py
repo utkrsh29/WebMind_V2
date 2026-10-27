@@ -3,7 +3,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Callable, Coroutine, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.agent.memory import ExperienceMemory
 from app.agent.worker import AgentWorker, WorkerExecutionOutcome
 from app.browser.session import BrowserSession
 from app.db import async_session_maker
@@ -108,11 +107,6 @@ class OrchestrationManager:
                 {"tier": profile.routed_tier, "reasons": profile.routing_reason},
             )
 
-            # Retrieve experience memory hints
-            experience_hints = await ExperienceMemory.retrieve_similar_experiences(
-                db_session, query=query, top_k=3
-            )
-
         # 2. START BROWSER & AGENT WORKER LOOP
         session = BrowserSession()
         await session.start()
@@ -160,8 +154,10 @@ class OrchestrationManager:
                     task_query=query,
                     constraints=profile.constraints,
                     session=session,
+                    task_id=task_id,
+                    task_type=profile.task_type,
                     event_callback=worker_event_handler,
-                    experience_hints=experience_hints + failure_approaches,
+                    experience_hints=failure_approaches,
                     initial_extracted_data=carried_extracted_data,
                     initial_visited_urls=carried_visited_urls,
                 )
@@ -192,16 +188,6 @@ class OrchestrationManager:
                             task_obj.final_result = outcome.result
                         await db_session.commit()
 
-                        # Store in experience memory
-                        await ExperienceMemory.store_experience(
-                            session=db_session,
-                            query=query,
-                            profile=profile,
-                            tier=current_tier,
-                            action_summary=f"Completed in {outcome.steps_executed} steps on {current_tier}",
-                            outcome="success",
-                            failure_types=[],
-                        )
                         break
 
                     # Failed: evaluate escalation
@@ -259,15 +245,7 @@ class OrchestrationManager:
                             },
                         )
 
-                        await ExperienceMemory.store_experience(
-                            session=db_session,
-                            query=query,
-                            profile=profile,
-                            tier=current_tier,
-                            action_summary=f"Failed on {current_tier}: {outcome.error_message}",
-                            outcome="failure",
-                            failure_types=[outcome.failure_type] if outcome.failure_type else [],
-                        )
+                        await worker.persist_terminal_failure()
                         break
         finally:
             self.active_workers.pop(task_id, None)

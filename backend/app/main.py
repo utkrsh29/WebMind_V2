@@ -1,20 +1,28 @@
 import asyncio
 import json
 import logging
+import sys
+
+# On Windows, enforce ProactorEventLoop so Playwright subprocesses work properly
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict, List
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from sqlalchemy import desc, func, select
+from fastapi.responses import JSONResponse, StreamingResponse
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.db import get_db, init_db
-from app.models import Step, Task, TaskProfileModel, TaskRun
+from app.models import ExperienceMemoryModel, Step, Task, TaskProfileModel, TaskRun
+from app.agent.memory import ExperienceMemoryService
+from app.models import MemoryAccessModel, MemoryEvidenceModel
 from app.orchestrator.orchestrator import orchestrator
 from app.schemas import (
     MetricSummaryResponse,
+    HumanBrowserActionRequest,
     TaskConfirmRequest,
     TaskCreateRequest,
     TaskProfileSchema,
@@ -29,6 +37,8 @@ logger = logging.getLogger("webmind.main")
 async def lifespan(app: FastAPI):
     logger.info("Initializing WebMind database...")
     await init_db()
+    indexed = await ExperienceMemoryService().rebuild_vector_index()
+    logger.info("ChromaDB startup backfill indexed %s existing memories.", indexed)
     logger.info("WebMind backend initialized successfully.")
     yield
 
@@ -208,6 +218,35 @@ async def confirm_task_action(
     return {"status": "confirmed", "approved": payload.approved}
 
 
+@app.get("/api/tasks/{task_id}/browser-handoff")
+async def get_browser_handoff(task_id: str):
+    """Expose a live page snapshot only while an active worker awaits a person."""
+    worker = orchestrator.active_workers.get(task_id)
+    if worker is None:
+        raise HTTPException(status_code=404, detail="No active browser task found.")
+    try:
+        return await worker.get_browser_handoff_state()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/tasks/{task_id}/browser-handoff/action")
+async def perform_browser_handoff_action(task_id: str, payload: HumanBrowserActionRequest):
+    """Perform a user-selected, observed browser action while the worker is paused."""
+    worker = orchestrator.active_workers.get(task_id)
+    if worker is None:
+        raise HTTPException(status_code=404, detail="No active browser task found.")
+    try:
+        result = await worker.perform_human_browser_action(payload)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if result.get("stale"):
+        return JSONResponse(status_code=409, content=result)
+    return result
+
+
 @app.get("/api/tasks")
 async def list_tasks(
     limit: int = 50,
@@ -304,3 +343,90 @@ async def get_metrics(
         action_efficiency=action_efficiency,
         tier_distribution=tier_counts,
     )
+
+
+@app.get("/api/memories")
+async def list_memories(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    domain: str | None = None,
+    task_type: str | None = None,
+    outcome: str | None = None,
+    min_reliability: float | None = Query(None, ge=0.0, le=1.0),
+    max_reliability: float | None = Query(None, ge=0.0, le=1.0),
+    db: AsyncSession = Depends(get_db),
+):
+    """List real persisted experience memories with filters and pagination."""
+    filters = []
+    if domain:
+        filters.append(ExperienceMemoryModel.domain == domain.lower().removeprefix("www."))
+    if task_type:
+        filters.append(ExperienceMemoryModel.task_type == task_type)
+    if outcome:
+        filters.append(ExperienceMemoryModel.outcome == outcome)
+    if min_reliability is not None:
+        filters.append(ExperienceMemoryModel.reliability_score >= min_reliability)
+    if max_reliability is not None:
+        filters.append(ExperienceMemoryModel.reliability_score <= max_reliability)
+
+    count_result = await db.execute(select(func.count()).select_from(ExperienceMemoryModel).where(*filters))
+    total = int(count_result.scalar_one())
+    rows_result = await db.execute(
+        select(ExperienceMemoryModel)
+        .where(*filters)
+        .order_by(ExperienceMemoryModel.updated_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    return {
+        "items": [ExperienceMemoryService.serialize_memory(row) for row in rows_result.scalars().all()],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+    }
+
+
+@app.get("/api/memories/{memory_id}")
+async def get_memory_detail(memory_id: str, db: AsyncSession = Depends(get_db)):
+    record = await db.get(ExperienceMemoryModel, memory_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    service = ExperienceMemoryService()
+    return {
+        **service.serialize_memory(record),
+        "retrieval_history": await service.list_access_history(memory_id, db),
+        "evidence_history": await service.list_evidence(memory_id, db),
+    }
+
+
+@app.delete("/api/memories/{memory_id}")
+async def delete_memory(memory_id: str, db: AsyncSession = Depends(get_db)):
+    record = await db.get(ExperienceMemoryModel, memory_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    embedding_model = record.embedding_model
+    await db.execute(delete(MemoryAccessModel).where(MemoryAccessModel.memory_id == memory_id))
+    await db.execute(delete(MemoryEvidenceModel).where(MemoryEvidenceModel.memory_id == memory_id))
+    await db.delete(record)
+    await db.commit()
+    await ExperienceMemoryService().delete_vector_record(memory_id, embedding_model)
+    return {"deleted": memory_id}
+
+
+@app.delete("/api/memories")
+async def clear_memories(
+    confirm: bool = Query(False, description="Must be true to permanently clear all memories"),
+    db: AsyncSession = Depends(get_db),
+):
+    if not confirm:
+        raise HTTPException(status_code=400, detail="Set confirm=true to clear all memories.")
+    await db.execute(delete(MemoryAccessModel))
+    await db.execute(delete(MemoryEvidenceModel))
+    rows = await db.execute(select(ExperienceMemoryModel))
+    count = 0
+    for record in rows.scalars().all():
+        await db.delete(record)
+        count += 1
+    await db.commit()
+    await ExperienceMemoryService().clear_vector_index()
+    return {"deleted_count": count}

@@ -14,6 +14,15 @@ logger = logging.getLogger(__name__)
 litellm.telemetry = False
 litellm.drop_params = True
 
+# Models that do NOT support response_format (JSON mode) — use text extraction instead
+_NO_RESPONSE_FORMAT_MODELS = frozenset(["gemini", "gemma"])
+
+
+def _is_gemini_model(model: str) -> bool:
+    """Returns True for Gemini/Gemma models (Google-family) via any provider."""
+    m = model.lower()
+    return "gemini" in m or "gemma" in m
+
 
 class TokenUsage:
     def __init__(self, prompt_tokens: int = 0, completion_tokens: int = 0, total_tokens: int = 0):
@@ -82,18 +91,22 @@ async def call_llm(
                 {"type": "image_url", "image_url": {"url": img_url}},
             ]
 
-    # Gemini 3.8 strongly recommends temperature 1.0 to prevent infinite loops and 503 stalls
-    effective_temp = 1.0 if "gemini-3" in model.lower() else temperature
+    # Gemini/Gemma via any provider works best at temp 1.0
+    # OpenAI/Anthropic models keep user-requested temperature
+    is_gemini = _is_gemini_model(model)
+    effective_temp = 1.0 if is_gemini else temperature
 
     kwargs: Dict[str, Any] = {
         "model": model,
         "messages": messages,
         "temperature": effective_temp,
         "max_tokens": max_tokens,
-        "timeout": 45.0,
+        "timeout": 60.0,
     }
 
-    if response_format:
+    # Gemini does NOT support response_format JSON mode reliably — skip it,
+    # we already extract JSON from free-form text via extract_json_from_text()
+    if response_format and not is_gemini:
         kwargs["response_format"] = response_format
 
     last_err = None
@@ -113,13 +126,35 @@ async def call_llm(
         except Exception as e:
             err_str = str(e).lower()
             last_err = e
-            
-            # 1. Hard daily limit exceeded - cannot recover by waiting seconds
+
+            # 1. Hard daily limit exceeded — cannot recover by waiting seconds
             if "per day" in err_str or "requests per day" in err_str:
                 logger.error(f"Daily quota hard limit exceeded on {model}: {e}")
                 raise e
 
-            # 2. Per-minute limit or transient 429 - recoverable by waiting retryDelay
+            # 2. Model not found (404) — no point retrying
+            if "not_found" in err_str or "404" in err_str:
+                logger.error(f"Model not found: {model}. Update GENERAL_MODEL in .env. Error: {e}")
+                raise e
+
+            # 3. OpenRouter's in-flight budget is temporary: active requests
+            # currently reserve more credits than the account can cover. Honor
+            # its Retry-After hint instead of treating the 402 as a fatal error.
+            if "in_flight_budget_exhausted" in err_str:
+                match = re.search(r'retry-after["\']?\s*[:=]\s*["\']?([\d.]+)', err_str)
+                try:
+                    wait_sec = float(match.group(1)) if match else 120.0
+                except (TypeError, ValueError):
+                    wait_sec = 120.0
+                wait_sec = max(1.0, min(wait_sec, 300.0))
+                logger.warning(
+                    f"OpenRouter in-flight budget exhausted on {model}. "
+                    f"Waiting {wait_sec:.1f}s before retry attempt {attempt + 1}/3..."
+                )
+                await asyncio.sleep(wait_sec)
+                continue
+
+            # 4. Per-minute limit or transient 429 — recoverable by waiting retryDelay
             if any(k in err_str for k in ["rate_limit", "ratelimit", "quota", "429", "resource_exhausted"]):
                 wait_sec = 14.0
                 match = re.search(r"retry in\s+([\d\.]+)\s*s", err_str)
@@ -132,8 +167,15 @@ async def call_llm(
                         wait_sec = 14.0
                 
                 logger.warning(
-                    f"Gemini per-minute rate limit hit on {model}. Waiting {wait_sec:.1f}s before retry attempt {attempt + 1}/3..."
+                    f"Rate limit hit on {model}. Waiting {wait_sec:.1f}s before retry attempt {attempt + 1}/3..."
                 )
+                await asyncio.sleep(wait_sec)
+                continue
+
+            # 5. 503 service unavailable — short wait then retry
+            if "503" in err_str or "unavailable" in err_str or "overloaded" in err_str:
+                wait_sec = 5.0 * (attempt + 1)
+                logger.warning(f"503/overloaded on {model}. Waiting {wait_sec:.1f}s (attempt {attempt + 1}/3)...")
                 await asyncio.sleep(wait_sec)
                 continue
 

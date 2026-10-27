@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   Bot, BarChart2, Cpu, Zap, Brain, Shield,
-  Activity, Layers, GitBranch, Eye,
+  Activity, Layers, GitBranch, Eye, BrainCircuit,
 } from "lucide-react";
 import { TaskInput } from "@/components/TaskInput";
 import { TaskProfileCard } from "@/components/TaskProfileCard";
@@ -11,12 +11,13 @@ import { RunView } from "@/components/RunView";
 import { AskUserModal } from "@/components/AskUserModal";
 import { FinalResultView } from "@/components/FinalResultView";
 import { MetricsDashboard } from "@/components/MetricsDashboard";
+import { MemoryDashboard } from "@/components/MemoryDashboard";
 
 /* ── Tier badge helper ─────────────────────────────────── */
 const TIER_META: Record<string, { icon: React.ReactNode; cls: string; label: string }> = {
-  FAST:      { icon: <Zap  className="w-3 h-3" />, cls: "tier-fast",      label: "FAST" },
-  GENERAL:   { icon: <Cpu  className="w-3 h-3" />, cls: "tier-general",   label: "GENERAL" },
-  REASONING: { icon: <Brain className="w-3 h-3"/>, cls: "tier-reasoning", label: "REASONING" },
+  FAST: { icon: <Zap className="w-3 h-3" />, cls: "tier-fast", label: "FAST" },
+  GENERAL: { icon: <Cpu className="w-3 h-3" />, cls: "tier-general", label: "GENERAL" },
+  REASONING: { icon: <Brain className="w-3 h-3" />, cls: "tier-reasoning", label: "REASONING" },
 };
 
 function TierPill({ tier }: { tier: string }) {
@@ -31,10 +32,10 @@ function TierPill({ tier }: { tier: string }) {
 /* ── Status indicator ─────────────────────────────────── */
 function StatusDot({ status }: { status: string }) {
   const map: Record<string, string> = {
-    idle:      "bg-slate-600",
-    running:   "bg-teal-400 animate-pulse shadow-[0_0_8px_rgba(20,184,166,0.8)]",
+    idle: "bg-slate-600",
+    running: "bg-teal-400 animate-pulse shadow-[0_0_8px_rgba(20,184,166,0.8)]",
     completed: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]",
-    failed:    "bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.6)]",
+    failed: "bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.6)]",
   };
   return <span className={`inline-block w-2 h-2 rounded-full ${map[status] ?? map.idle}`} />;
 }
@@ -42,25 +43,26 @@ function StatusDot({ status }: { status: string }) {
 /* ── Feature pills in hero ─────────────────────────────── */
 const FEATURES = [
   { icon: <GitBranch className="w-3.5 h-3.5" />, label: "Deterministic Routing" },
-  { icon: <Eye        className="w-3.5 h-3.5" />, label: "Live Browser Verification" },
-  { icon: <Layers     className="w-3.5 h-3.5" />, label: "Multi-Agent Orchestration" },
-  { icon: <Shield     className="w-3.5 h-3.5" />, label: "Failure-Aware Recovery" },
-  { icon: <Activity   className="w-3.5 h-3.5" />, label: "Real-time SSE Events" },
+  { icon: <Eye className="w-3.5 h-3.5" />, label: "Live Browser Verification" },
+  { icon: <Layers className="w-3.5 h-3.5" />, label: "Multi-Agent Orchestration" },
+  { icon: <Shield className="w-3.5 h-3.5" />, label: "Failure-Aware Recovery" },
+  { icon: <Activity className="w-3.5 h-3.5" />, label: "Real-time SSE Events" },
 ];
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<"agent" | "metrics">("agent");
-  const [taskId, setTaskId]       = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"agent" | "metrics" | "memory">("agent");
+  const [taskId, setTaskId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [status, setStatus]       = useState("idle");
+  const [status, setStatus] = useState("idle");
   const [currentTier, setCurrentTier] = useState("FAST");
   const [taskProfile, setTaskProfile] = useState<any>(null);
-  const [steps, setSteps]         = useState<any[]>([]);
+  const [steps, setSteps] = useState<any[]>([]);
   const [escalationLog, setEscalationLog] = useState<any[]>([]);
   const [latestScreenshot, setLatestScreenshot] = useState<string | null>(null);
   const [finalResult, setFinalResult] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [askUserPrompt, setAskUserPrompt] = useState<string | null>(null);
+  const [askUserRequest, setAskUserRequest] = useState<{ prompt: string; is_login?: boolean; can_take_over?: boolean; requires_approval?: boolean } | null>(null);
+  const [memoryEvents, setMemoryEvents] = useState<any[]>([]);
 
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -71,6 +73,103 @@ export default function Home() {
 
   useEffect(() => () => closeEventSource(), []);
 
+  // Attach the visible studio to an already-running task (useful for demos and reconnects).
+  useEffect(() => {
+    const existingTaskId = new URLSearchParams(window.location.search).get("taskId");
+    if (!existingTaskId) return;
+
+    closeEventSource();
+    setTaskId(existingTaskId);
+    setStatus("running");
+    setIsLoading(true);
+    setErrorMessage(null);
+    setFinalResult(null);
+
+    const eventSource = new EventSource(`/api/tasks/${existingTaskId}/events`);
+    eventSourceRef.current = eventSource;
+
+    eventSource.addEventListener("profile_created", (e: MessageEvent) =>
+      setTaskProfile(JSON.parse(e.data))
+    );
+    eventSource.addEventListener("routed", (e: MessageEvent) =>
+      setCurrentTier(JSON.parse(e.data).tier)
+    );
+    eventSource.addEventListener("step_started", (e: MessageEvent) => {
+      const p = JSON.parse(e.data);
+      if (p.screenshot_b64) setLatestScreenshot(p.screenshot_b64);
+      setSteps(prev => prev.find(s => s.step_number === p.step_number) ? prev : [...prev, p]);
+    });
+    eventSource.addEventListener("action_planned", (e: MessageEvent) => {
+      const p = JSON.parse(e.data);
+      setSteps(prev => prev.map(s => s.step_number === p.step_number
+        ? { ...s, thought: p.thought, action: p.action, expected_state: p.expected_state }
+        : s
+      ));
+    });
+    eventSource.addEventListener("verification", (e: MessageEvent) => {
+      const p = JSON.parse(e.data);
+      if (p.screenshot_b64) setLatestScreenshot(p.screenshot_b64);
+      setSteps(prev => prev.map(s => s.step_number === p.step_number
+        ? { ...s, verification_status: p.status, failure_type: p.failure_type, reason: p.reason }
+        : s
+      ));
+    });
+    eventSource.addEventListener("retry", (e: MessageEvent) => {
+      const p = JSON.parse(e.data);
+      setSteps(prev => prev.map(s => s.step_number === p.step_number
+        ? { ...s, retry_count: p.retry_count, reason: p.reason }
+        : s
+      ));
+    });
+    eventSource.addEventListener("memory_event", (e: MessageEvent) => {
+      const p = JSON.parse(e.data);
+      setMemoryEvents(prev => [...prev.slice(-49), p]);
+    });
+    eventSource.addEventListener("escalated", (e: MessageEvent) => {
+      const p = JSON.parse(e.data);
+      setCurrentTier(p.to_tier);
+      setEscalationLog(prev => [...prev, p]);
+    });
+    eventSource.addEventListener("ask_user", (e: MessageEvent) => setAskUserRequest(JSON.parse(e.data)));
+    eventSource.addEventListener("result", (e: MessageEvent) => {
+      setFinalResult(JSON.parse(e.data).result);
+      setStatus("completed");
+      setIsLoading(false);
+      closeEventSource();
+    });
+    eventSource.addEventListener("error", (e: MessageEvent) => {
+      let msg = "Task execution encountered an error.";
+      try { const p = JSON.parse((e as MessageEvent).data); msg = p.error_message ?? p.reason ?? msg; } catch { }
+      setErrorMessage(msg);
+      setStatus("failed");
+      setIsLoading(false);
+      closeEventSource();
+    });
+    eventSource.onerror = () => { setIsLoading(false); };
+
+    fetch(`/api/tasks/${existingTaskId}`)
+      .then(res => res.ok ? res.json() : Promise.reject(new Error(`Task ${existingTaskId} not found`)))
+      .then(data => {
+        setTaskProfile(data.profile ?? null);
+        setCurrentTier(data.current_tier ?? data.profile?.routed_tier ?? "FAST");
+        if (data.status === "completed") {
+          setFinalResult(data.final_result);
+          setStatus("completed");
+          setIsLoading(false);
+        } else if (data.status === "failed" || data.status === "cancelled") {
+          setStatus("failed");
+          setIsLoading(false);
+        }
+      })
+      .catch(err => {
+        setErrorMessage(err.message ?? "Could not attach to task.");
+        setStatus("failed");
+        setIsLoading(false);
+      });
+
+    return () => eventSource.close();
+  }, []);
+
   const handleTaskSubmit = async (query: string, forcedTier: string | null) => {
     closeEventSource();
     setIsLoading(true);
@@ -80,7 +179,8 @@ export default function Home() {
     setEscalationLog([]);
     setLatestScreenshot(null);
     setFinalResult(null);
-    setAskUserPrompt(null);
+    setAskUserRequest(null);
+    setMemoryEvents([]);
     setErrorMessage(null);
     setActiveTab("agent");
 
@@ -135,14 +235,16 @@ export default function Home() {
             : s
         ));
       });
+      eventSource.addEventListener("memory_event", (e: MessageEvent) => {
+        const p = JSON.parse(e.data);
+        setMemoryEvents(prev => [...prev.slice(-49), p]);
+      });
       eventSource.addEventListener("escalated", (e: MessageEvent) => {
         const p = JSON.parse(e.data);
         setCurrentTier(p.to_tier);
         setEscalationLog(prev => [...prev, p]);
       });
-      eventSource.addEventListener("ask_user", (e: MessageEvent) =>
-        setAskUserPrompt(JSON.parse(e.data).prompt)
-      );
+      eventSource.addEventListener("ask_user", (e: MessageEvent) => setAskUserRequest(JSON.parse(e.data)));
       eventSource.addEventListener("result", (e: MessageEvent) => {
         setFinalResult(JSON.parse(e.data).result);
         setStatus("completed");
@@ -151,7 +253,7 @@ export default function Home() {
       });
       eventSource.addEventListener("error", (e: MessageEvent) => {
         let msg = "Task execution encountered an error.";
-        try { const p = JSON.parse(e.data); msg = p.error_message ?? p.reason ?? msg; } catch {}
+        try { const p = JSON.parse(e.data); msg = p.error_message ?? p.reason ?? msg; } catch { }
         setErrorMessage(msg);
         setStatus("failed");
         setIsLoading(false);
@@ -168,18 +270,21 @@ export default function Home() {
 
   const handleAskUserConfirm = async (approved: boolean, userInput?: string) => {
     if (!taskId) return;
-    setAskUserPrompt(null);
     try {
-      await fetch(`/api/tasks/${taskId}/confirm`, {
+      const response = await fetch(`/api/tasks/${taskId}/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ approved, user_input: userInput }),
       });
-    } catch (e) { console.error("Confirm error:", e); }
+      if (!response.ok) throw new Error(`Could not resume task (${response.status}).`);
+      setAskUserRequest(null);
+    } catch (e: any) {
+      setErrorMessage(e.message ?? "Could not resume task.");
+    }
   };
 
   const hasResult = finalResult || errorMessage;
-  const isIdle    = status === "idle";
+  const isIdle = status === "idle";
 
   return (
     <div className="relative min-h-screen flex flex-col">
@@ -228,18 +333,18 @@ export default function Home() {
           {/* Tab nav */}
           <nav className="flex items-center gap-1 glass rounded-xl p-1">
             {[
-              { id: "agent",   icon: <Cpu className="w-3.5 h-3.5" />,      label: "Agent Studio" },
+              { id: "agent", icon: <Cpu className="w-3.5 h-3.5" />, label: "Agent Studio" },
+              { id: "memory", icon: <BrainCircuit className="w-3.5 h-3.5" />, label: "Memory" },
               { id: "metrics", icon: <BarChart2 className="w-3.5 h-3.5" />, label: "Metrics & Eval" },
             ].map(tab => (
               <button
                 key={tab.id}
                 id={`tab-${tab.id}`}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
-                  activeTab === tab.id
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${activeTab === tab.id
                     ? "bg-gradient-to-r from-teal-500 to-cyan-500 text-slate-950 shadow-md shadow-teal-500/25"
                     : "text-slate-400 hover:text-white hover:bg-white/5"
-                }`}
+                  }`}
               >
                 {tab.icon}
                 <span className="hidden sm:inline">{tab.label}</span>
@@ -298,6 +403,7 @@ export default function Home() {
                     latestScreenshot={null}  /* shown in right column */
                     status={status}
                     errorMessage={errorMessage}
+                    memoryEvents={memoryEvents}
                   />
                 </div>
 
@@ -314,7 +420,7 @@ export default function Home() {
                         <span className="text-[10px] text-slate-500 font-mono ml-1">live browser</span>
                         {isLoading && (
                           <span className="ml-auto flex gap-1">
-                            {[0,1,2].map(i => (
+                            {[0, 1, 2].map(i => (
                               <span key={i} className={`typing-dot w-1.5 h-1.5 rounded-full bg-teal-400`}
                                 style={{ animationDelay: `${i * 0.2}s` }} />
                             ))}
@@ -353,16 +459,19 @@ export default function Home() {
               </div>
             )}
           </>
-        ) : (
-          <MetricsDashboard />
-        )}
+        ) : activeTab === "metrics" ? <MetricsDashboard /> : <MemoryDashboard />}
       </main>
 
       {/* ── Human-in-the-loop modal ── */}
       <AskUserModal
-        isOpen={Boolean(askUserPrompt)}
-        prompt={askUserPrompt ?? ""}
+        isOpen={Boolean(askUserRequest)}
+        prompt={askUserRequest?.prompt ?? ""}
         onConfirm={handleAskUserConfirm}
+        taskId={taskId}
+        isLogin={askUserRequest?.is_login}
+        canTakeOver={askUserRequest?.can_take_over}
+        requiresApproval={askUserRequest?.requires_approval}
+        latestScreenshot={latestScreenshot}
       />
 
       {/* ── Footer ── */}

@@ -44,4 +44,8 @@ screenshots/
 data/
 *.sqlite
 *.db
-test.db
+chroma_data/
+backend/chroma_data/
+# Logs
+*.log
+

@@ -1,6 +1,18 @@
 services:
+  chroma:
+    image: chromadb/chroma:1.5.8
+    container_name: webmind-chroma
+    volumes:
+      - chroma-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v2/heartbeat')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   db:
-    image: pgvector/pgvector:pg16
+    image: postgres:16
     container_name: webmind-db
     environment:
       POSTGRES_USER: webmind
@@ -26,6 +38,8 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://webmind:webmind@db:5432/webmind
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
       - LLM_API_KEY=${LLM_API_KEY}
       - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
       - FAST_MODEL=${FAST_MODEL:-gemini/gemini-2.5-flash}
@@ -37,6 +51,8 @@ services:
       - HEADLESS=${HEADLESS:-true}
     depends_on:
       db:
+        condition: service_healthy
+      chroma:
         condition: service_healthy
     volumes:
       - ./backend:/app
@@ -58,4 +74,5 @@ services:
 
 volumes:
   pgdata:
+  chroma-data:
   backend-cache:

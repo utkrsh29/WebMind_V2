@@ -4,41 +4,42 @@ import React, { useState } from "react";
 import {
   Activity, ArrowUpRight, CheckCircle2, XCircle,
   RefreshCw, AlertTriangle, ChevronDown, ChevronUp,
-  Maximize2, Terminal, Clock, Code2, MessageSquare,
+  Maximize2, Terminal, Clock, Code2, MessageSquare, Brain,
 } from "lucide-react";
 
 interface StepItem {
-  step_number:         number;
-  tier:                string;
-  url?:                string;
-  title?:              string;
-  thought?:            string;
-  action?:             any;
-  expected_state?:     any;
-  screenshot_b64?:     string;
+  step_number: number;
+  tier: string;
+  url?: string;
+  title?: string;
+  thought?: string;
+  action?: any;
+  expected_state?: any;
+  screenshot_b64?: string;
   verification_status?: string;
-  failure_type?:       string;
-  retry_count?:        number;
-  reason?:             string;
+  failure_type?: string;
+  retry_count?: number;
+  reason?: string;
 }
 
 interface RunViewProps {
-  currentTier:    string;
-  steps:          StepItem[];
-  escalationLog:  Array<{ from_tier: string; to_tier: string; reason: string }>;
+  currentTier: string;
+  steps: StepItem[];
+  escalationLog: Array<{ from_tier: string; to_tier: string; reason: string }>;
   latestScreenshot: string | null;
-  status:         string;
-  errorMessage?:  string | null;
+  status: string;
+  errorMessage?: string | null;
+  memoryEvents?: Array<{ stage: string; memory_id?: string; memory_ids?: string[]; decision?: string; reason?: string; relevance_score?: number; outcome?: string; reliability_score?: number; step_number?: number }>;
 }
 
 const ACTION_COLORS: Record<string, string> = {
-  goto:   "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
-  click:  "text-teal-400 bg-teal-500/10 border-teal-500/20",
-  type:   "text-violet-400 bg-violet-500/10 border-violet-500/20",
+  goto: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
+  click: "text-teal-400 bg-teal-500/10 border-teal-500/20",
+  type: "text-violet-400 bg-violet-500/10 border-violet-500/20",
   scroll: "text-blue-400 bg-blue-500/10 border-blue-500/20",
-  done:   "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-  wait:   "text-amber-400 bg-amber-500/10 border-amber-500/20",
-  extract:"text-pink-400 bg-pink-500/10 border-pink-500/20",
+  done: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+  wait: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+  extract: "text-pink-400 bg-pink-500/10 border-pink-500/20",
 };
 
 function ActionBadge({ action }: { action: string }) {
@@ -63,14 +64,14 @@ function StepDot({ status }: { status?: string }) {
 }
 
 export const RunView: React.FC<RunViewProps> = ({
-  currentTier, steps, escalationLog, latestScreenshot, status, errorMessage,
+  currentTier, steps, escalationLog, latestScreenshot, status, errorMessage, memoryEvents = [],
 }) => {
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
   const [fullImageModal, setFullImageModal] = useState<string | null>(null);
 
   const TIER_CLS: Record<string, string> = {
-    FAST:      "tier-fast",
-    GENERAL:   "tier-general",
+    FAST: "tier-fast",
+    GENERAL: "tier-general",
     REASONING: "tier-reasoning",
   };
 
@@ -110,6 +111,25 @@ export const RunView: React.FC<RunViewProps> = ({
         </div>
       ))}
 
+      {memoryEvents.length > 0 && (
+        <div className="glass-bright rounded-2xl border border-violet-500/20 p-4">
+          <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-violet-300">
+            <Brain className="h-4 w-4" />Memory trace
+          </div>
+          <div className="space-y-2">
+            {memoryEvents.slice(-8).reverse().map((event, index) => (
+              <div key={`${event.stage}-${event.memory_id ?? event.memory_ids?.join("-")}-${index}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px]">
+                <span className="font-semibold text-slate-200">{event.stage.replaceAll("_", " ")}</span>
+                {event.decision && <span className="rounded border border-violet-500/25 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-bold text-violet-200">{event.decision}</span>}
+                {event.memory_id && <span className="font-mono text-[9px] text-slate-600">{event.memory_id.slice(0, 8)}</span>}
+                {event.memory_ids?.length ? <span className="font-mono text-[9px] text-slate-600">{event.memory_ids.length} memory(s)</span> : null}
+                {event.reason && <span className="text-slate-400">{event.reason}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Timeline card ── */}
       <div className="glass-bright rounded-2xl border border-white/[0.08] overflow-hidden shadow-xl">
         {/* Header */}
@@ -135,7 +155,7 @@ export const RunView: React.FC<RunViewProps> = ({
               <Terminal className="w-8 h-8 mx-auto mb-3 text-teal-500/30" />
               <p className="text-sm">Initializing browser session…</p>
               <div className="flex justify-center gap-1 mt-3">
-                {[0,1,2].map(i => (
+                {[0, 1, 2].map(i => (
                   <span key={i} className="typing-dot w-1.5 h-1.5 rounded-full bg-teal-400/50"
                     style={{ animationDelay: `${i * 0.2}s` }} />
                 ))}
@@ -162,9 +182,9 @@ export const RunView: React.FC<RunViewProps> = ({
                       <span className="font-mono text-[10px] text-slate-600 shrink-0">#{st.step_number}</span>
                       {st.action?.action && <ActionBadge action={st.action.action} />}
                       <span className="text-xs text-slate-300 truncate font-medium">
-                        {st.action?.url    ? st.action.url
-                         : st.action?.text ? `"${st.action.text.slice(0, 50)}"`
-                         : st.thought?.split(".")[0] ?? "Processing…"}
+                        {st.action?.url ? st.action.url
+                          : st.action?.text ? `"${st.action.text.slice(0, 50)}"`
+                            : st.thought?.split(".")[0] ?? "Processing…"}
                       </span>
                     </div>
 
