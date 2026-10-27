@@ -1,7 +1,9 @@
 import asyncio
 import base64
 import logging
+import re
 from typing import Any, Callable, Coroutine, Dict, List, Optional
+from urllib.parse import quote_plus
 from app.agent.actions import execute_action
 from app.agent.llm import TokenUsage
 from app.agent.memory import (
@@ -25,7 +27,7 @@ from app.agent.verifier import BrowserVerifier, VerificationResult
 from app.browser.dom_snapshot import DOMSnapshot, capture_dom_snapshot
 from app.browser.session import BrowserSession
 from app.config import settings
-from app.schemas import AgentTier, FailureType, PlannerOutputSchema
+from app.schemas import ActionSchema, AgentTier, ExpectedStateSchema, FailureType, PlannerOutputSchema
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,8 @@ class AgentWorker:
         session: BrowserSession,
         task_id: str = "",
         task_type: str = "other",
+        requires_comparison: bool = False,
+        target_sites: Optional[List[str]] = None,
         event_callback: Optional[Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]]] = None,
         experience_hints: Optional[List[str]] = None,
         initial_extracted_data: Optional[Dict[str, Any]] = None,
@@ -84,6 +88,8 @@ class AgentWorker:
         self.session = session
         self.task_id = task_id
         self.task_type = task_type
+        self.requires_comparison = requires_comparison
+        self.target_sites = target_sites or []
         self.event_callback = event_callback
         self.experience_hints = experience_hints or []
         self.memory = ExperienceMemoryService()
@@ -244,6 +250,72 @@ class AgentWorker:
                 f"Gate reason: {gate['reason']} Re-identify all controls from this page."
             )
         return hints
+
+    def _missing_comparison_sites(self) -> List[str]:
+        if not self.requires_comparison and self.task_type not in ("comparison", "multi_site"):
+            return []
+
+        requested = []
+        for raw_site in self.target_sites:
+            site = str(raw_site).strip().lower().removeprefix("www.")
+            if not site or site == "unspecified":
+                continue
+            canonical = next(
+                (known for known in ("amazon", "flipkart", "ebay", "walmart", "target") if known in site),
+                site,
+            )
+            requested.append(canonical)
+        if not requested:
+            requested = [
+                site for site in ("amazon", "flipkart", "ebay", "walmart", "target")
+                if re.search(rf"\b{re.escape(site)}\b", self.task_query.lower())
+            ]
+
+        evidence_urls = [
+            " ".join((str(record.get("source", "")), str(record.get("url", "")))).lower()
+            for record in self.extracted_data.get("sources", [])
+            if isinstance(record, dict)
+        ]
+        return [site for site in requested if not any(site in evidence for evidence in evidence_urls)]
+
+    def _comparison_search_url(self, site: str) -> Optional[str]:
+        """Build a direct retailer search URL for supported cross-site comparisons."""
+        product = str(self.constraints.get("product") or "").strip()
+        if not product:
+            product = re.sub(
+                r"\b(compare|comparison|price|prices|cost|across|between|on|from|both|and|vs|versus|amazon|flipkart)\b",
+                " ",
+                self.task_query,
+                flags=re.IGNORECASE,
+            )
+            product = re.sub(r"\s+", " ", product).strip(" .,:;-")
+        if not product:
+            return None
+        if site == "amazon":
+            return f"https://www.amazon.in/s?k={quote_plus(product)}"
+        if site == "flipkart":
+            return f"https://www.flipkart.com/search?q={quote_plus(product)}"
+        return None
+
+    def _next_comparison_site_hop(self, snapshot: DOMSnapshot) -> Optional[str]:
+        """After extracting one requested retailer, move directly to the next missing one."""
+        if not (self.requires_comparison or self.task_type in ("comparison", "multi_site")):
+            return None
+        missing_sites = self._missing_comparison_sites()
+        current_host = (snapshot.url or "").lower()
+        extracted_current_site = any(
+            isinstance(record, dict)
+            and str(record.get("url", "")).lower().split("/", 3)[:3]
+            == current_host.split("/", 3)[:3]
+            for record in self.extracted_data.get("sources", [])
+        )
+        if not extracted_current_site:
+            return None
+        for site in missing_sites:
+            direct_url = self._comparison_search_url(site)
+            if direct_url:
+                return direct_url
+        return None
 
     async def _record_recovery(
         self,
@@ -514,6 +586,7 @@ class AgentWorker:
         last_failure_reason: Optional[str] = None
         last_user_input: Optional[str] = None
         consecutive_failures = 0
+        comparison_task = self.requires_comparison or self.task_type in ("comparison", "multi_site")
 
         logger.info(f"AgentWorker starting on tier={self.tier} (budget={self.max_steps} steps)")
 
@@ -526,7 +599,9 @@ class AgentWorker:
                 # ── OBSERVE ──────────────────────────────────────────────────
                 current_snapshot = await capture_dom_snapshot(
                     self.session.page,
-                    include_som_screenshot=(self.tier in ("GENERAL", "REASONING")),
+                    include_som_screenshot=(
+                        self.tier in ("GENERAL", "REASONING") and not comparison_task
+                    ),
                 )
 
                 if current_snapshot.url not in self.visited_urls:
@@ -572,6 +647,9 @@ class AgentWorker:
                         last_failure_reason=last_failure_reason,
                         last_user_input=last_user_input,
                         consecutive_failures=consecutive_failures,
+                        task_type=self.task_type,
+                        requires_comparison=self.requires_comparison,
+                        target_sites=self.target_sites,
                     )
                     self.total_usage.add(usage)
                     last_user_input = None  # consumed
@@ -594,6 +672,54 @@ class AgentWorker:
                 action = plan_output.next_action
                 thought = plan_output.thought
                 expected_state = plan_output.expected_state
+
+                # Once a retailer page has been extracted, do not spend another
+                # planner turn re-extracting the same page or narrating it. Move
+                # to the next requested retailer so comparisons make progress.
+                next_site_url = self._next_comparison_site_hop(current_snapshot)
+                if next_site_url:
+                    action = ActionSchema(action="goto", url=next_site_url)
+                    thought = "The current retailer has been captured; opening the next requested retailer to collect comparable evidence."
+                    expected_state = ExpectedStateSchema(
+                        url_contains="amazon.in" if "amazon.in" in next_site_url else "flipkart.com"
+                    )
+
+                if action.action == "finish":
+                    missing_sites = self._missing_comparison_sites()
+                    if missing_sites:
+                        retry_count += 1
+                        consecutive_failures += 1
+                        last_failure_reason = (
+                            "comparison_missing_sources: No extracted page evidence yet for "
+                            + ", ".join(missing_sites)
+                            + ". Visit that requested site, extract the matching product and price, then compare."
+                        )
+                        self.action_history.append({
+                            "step": step_number,
+                            "action": "finish",
+                            "detail": "Comparison attempted before all requested sites were checked",
+                            "status": "failure",
+                            "reason": last_failure_reason,
+                        })
+                        await self.emit_event("retry", {
+                            "step_number": step_number,
+                            "retry_count": retry_count,
+                            "reason": last_failure_reason,
+                            "consecutive_failures": consecutive_failures,
+                        })
+                        if retry_count > settings.MAX_RETRIES_PER_STEP:
+                            return WorkerExecutionOutcome(
+                                success=False,
+                                status="failed",
+                                failure_type="reasoning_error",
+                                error_message=last_failure_reason,
+                                steps_executed=step_number,
+                                token_usage=self.total_usage,
+                                extracted_data=self.extracted_data,
+                                visited_urls=self.visited_urls,
+                            )
+                        continue
+
                 offered_memory_ids = {
                     item["memory"]["memory_id"] for item in step_memories
                     if item.get("included_in_planner")
@@ -738,7 +864,9 @@ class AgentWorker:
                 # ── POST-ACTION OBSERVE & VERIFY ──────────────────────────────
                 post_snapshot = await capture_dom_snapshot(
                     self.session.page,
-                    include_som_screenshot=(self.tier in ("GENERAL", "REASONING")),
+                    include_som_screenshot=(
+                        self.tier in ("GENERAL", "REASONING") and not comparison_task
+                    ),
                 )
 
                 post_screenshot_b64 = None

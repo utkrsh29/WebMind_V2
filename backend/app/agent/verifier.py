@@ -215,13 +215,20 @@ class BrowserVerifier:
             )
 
         # ── 4. Loop detection ─────────────────────────────────────────────────
-        # Read-only extraction can legitimately repeat while the planner refines
-        # what it wants from the same page; it does not indicate an action loop.
-        if action.action != "extract" and self.check_for_loops(action_key, current_sig):
+        # Repeating a read-only extraction on an unchanged page is still a loop:
+        # the worker otherwise marks every extract successful and can spend its
+        # entire step budget narrating the same page instead of acting.
+        if self.check_for_loops(action_key, current_sig):
+            loop_reason = (
+                "Repeated extract on an unchanged page. Do not extract again; use an observed browser action, "
+                "finish if the requested goal is already verified, or ask the user for help."
+                if action.action == "extract"
+                else f"Agent repeated identical action '{action.action}' on unchanged page state."
+            )
             return VerificationResult(
                 success=False,
                 failure_type="loop_detected",
-                reason=f"Agent repeated identical action '{action.action}' on unchanged page state.",
+                reason=loop_reason,
                 state_signature=current_sig,
             )
 

@@ -81,14 +81,14 @@ DOM_INTERACTIVE_EXTRACT_JS = """
             const rect = el.getBoundingClientRect();
             const tag = el.tagName.toLowerCase();
             const role = el.getAttribute('role') || tag;
-            const label = getLabel(el).slice(0, 120);
+            const label = String(getLabel(el) ?? '').slice(0, 120);
             const inputType = tag === 'input' ? (el.type || 'text') : '';
             const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
             const fieldIdentity = [
                 el.getAttribute('name') || '', el.getAttribute('id') || '',
                 el.getAttribute('placeholder') || '', el.getAttribute('aria-label') || '', autocomplete
             ].join(' ').toLowerCase();
-            const rawValue = (el.value !== undefined ? el.value : (el.getAttribute('value') || '')).slice(0, 80);
+            const rawValue = String(el.value !== undefined ? el.value : (el.getAttribute('value') || '')).slice(0, 80);
             const sensitiveValue = ['password', 'email', 'tel'].includes(inputType) ||
                 /username|current-password|new-password|email|phone|tel|full.?name|first.?name|last.?name|address|cc-|cvv|otp|one.?time|verification|account/.test(fieldIdentity);
             const value = sensitiveValue && rawValue ? '[REDACTED]' : rawValue;

@@ -3,6 +3,7 @@ import base64
 import logging
 import re
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 from app.browser.session import BrowserSession
 from app.schemas import ActionSchema
 
@@ -78,6 +79,25 @@ RICH_EXTRACT_JS = r"""
         });
     });
     if (Object.keys(kvPairs).length) out.specs = kvPairs;
+
+    // Search result cards with product links. Keep each price connected to its
+    // product and URL instead of returning one unlabeled page-wide price list.
+    const productLinks = Array.from(document.querySelectorAll('a[href]'))
+        .filter(a => /\/(?:dp|gp\/product|p)\//i.test(a.getAttribute('href') || ''));
+    const products = [];
+    const seenProducts = new Set();
+    for (const link of productLinks) {
+        const url = new URL(link.getAttribute('href'), window.location.href).href;
+        if (seenProducts.has(url)) continue;
+        seenProducts.add(url);
+        const card = link.closest('[data-component-type="s-search-result"], article, li, [data-id]') || link.parentElement;
+        const text = (card?.innerText || link.innerText || '').replace(/\s+/g, ' ').trim();
+        const price = text.match(/(?:₹|Rs\.?|INR)\s?[\d,]+(?:\.\d{1,2})?/i)?.[0] || '';
+        const title = (link.innerText || link.getAttribute('title') || text).trim().slice(0, 240);
+        if (title) products.push({ title, price, url });
+        if (products.length >= 12) break;
+    }
+    if (products.length) out.products = products;
 
     // Page text paragraphs (top 10)
     const paragraphs = Array.from(document.querySelectorAll('p,article,main'))
@@ -410,12 +430,24 @@ async def execute_action(
             if not isinstance(extracted, dict):
                 extracted = {"raw": str(extracted)}
             if extracted_store is not None:
-                # Merge into accumulated store
-                for key, val in extracted.items():
-                    if key in extracted_store and isinstance(extracted_store[key], list) and isinstance(val, list):
-                        extracted_store[key].extend(val)
-                    else:
-                        extracted_store[key] = val
+                url = str(extracted.get("url") or page.url)
+                source = urlparse(url).hostname or url
+                record = {
+                    "source": source.removeprefix("www."),
+                    "url": url,
+                    "title": str(extracted.get("title") or page.title())[:240],
+                    "data": {key: value for key, value in extracted.items() if key not in ("url", "title")},
+                }
+                sources = extracted_store.setdefault("sources", [])
+                existing_index = next(
+                    (index for index, item in enumerate(sources) if item.get("url") == url),
+                    None,
+                )
+                if existing_index is None:
+                    sources.append(record)
+                    del sources[:-10]
+                else:
+                    sources[existing_index] = record
             return ActionExecutionResult(
                 success=True,
                 message=f"Extracted structured data: {desc}",

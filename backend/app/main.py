@@ -40,7 +40,10 @@ async def lifespan(app: FastAPI):
     indexed = await ExperienceMemoryService().rebuild_vector_index()
     logger.info("ChromaDB startup backfill indexed %s existing memories.", indexed)
     logger.info("WebMind backend initialized successfully.")
-    yield
+    try:
+        yield
+    finally:
+        await orchestrator.detach_retained_sessions()
 
 
 app = FastAPI(
@@ -185,7 +188,7 @@ async def task_events_stream(task_id: str):
                 try:
                     event_payload = await asyncio.wait_for(queue.get(), timeout=15.0)
                     yield f"event: {event_payload['event']}\ndata: {json.dumps(event_payload['data'])}\n\n"
-                    if event_payload["event"] in ("result", "error"):
+                    if event_payload["event"] in ("result", "error", "cancelled"):
                         break
                 except asyncio.TimeoutError:
                     yield ": keep-alive\n\n"
@@ -197,6 +200,19 @@ async def task_events_stream(task_id: str):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
+
+
+@app.post("/api/tasks/{task_id}/stop")
+async def stop_task(task_id: str, db: AsyncSession = Depends(get_db)):
+    """Stops a pending or running task and preserves its browser for inspection."""
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status not in ("pending", "running"):
+        raise HTTPException(status_code=409, detail=f"Task is already {task.status}.")
+
+    orchestrator.request_stop(task_id)
+    return {"task_id": task_id, "status": "stopping"}
 
 
 @app.post("/api/tasks/{task_id}/confirm")
@@ -228,6 +244,15 @@ async def get_browser_handoff(task_id: str):
         return await worker.get_browser_handoff_state()
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.delete("/api/tasks/{task_id}/browser-session")
+async def close_task_browser_session(task_id: str):
+    """Closes a retained browser tab after the task is inspected."""
+    closed = await orchestrator.close_retained_session(task_id)
+    if not closed:
+        raise HTTPException(status_code=404, detail="No retained browser session found.")
+    return {"status": "closed", "task_id": task_id}
 
 
 @app.post("/api/tasks/{task_id}/browser-handoff/action")
